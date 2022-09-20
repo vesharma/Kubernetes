@@ -1,0 +1,272 @@
+nmcli con add type ethernet con-name ens32 ifname ens32 ip4 192.168.75.141/24 gw4 192.168.75.2 ipv4.dns "192.168.75.2 8.8.8.8 8.8.4.4"
+
+
+ nmcli con add type ethernet con-name ens32 ifname ens32 ip4 192.168.75.141/24 gw4 192.168.75.2 ipv4.dns "192.168.75.2 8.8.8.8 8.8.4.4"
+yum install --downloadonly --downloaddir=<directory> <package>
+
+yum install --downloadonly --downloaddir=/root/kubedir kubelet kubeadm kubectl --disableexcludes=kubernetes
+yum install kubelet kubeadm kubectl --disableexcludes=kubernetes
+
+https://oracle-base.com/articles/linux/docker-install-docker-on-oracle-linux-ol7
+
+
+to install docker
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+ yum install docker-ce docker-ce-cli containerd.io
+
+
+ wget http://yum.oracle.com/public-yum-ol7.repo
+
+https://oracle-base.com/articles/linux/docker-install-docker-on-oracle-linux-ol7
+https://www.devopszones.com/2021/04/how-to-install-docker-on-oracle-linux-7.html
+https://blogs.oracle.com/virtualization/post/install-docker-on-oracle-linux-7
+
+
+
+#!/bin/sh
+
+dockerimagename=$(docker images|awk -F' ' '{print $1}')
+
+mkdir -p /root/dockerimages1
+cd /root/dockerimages1
+
+for i in $dockerimagename
+do
+   echo $i|awk -F'/' '{print $(NF)}'
+    echo $(docker save $i > $(echo $i|awk -F'/' '{print $(NF)}').tar)
+
+done
+
+Master
+#!/bin/sh
+
+#nmcli con add type ethernet con-name ens33 ifname ens33 ip4 192.168.75.140/24 gw4 192.168.75.2 ipv4.dns "192.168.75.2 8.8.8.8 8.8.4.4"
+
+hostnamectl set-hostname master-node
+
+swapoff -a
+
+`cat << EOF >> /etc/hosts
+192.168.75.140 master-node
+92.168.75.141 node1
+EOF`
+
+
+# Set SELinux in permissive mode (effectively disabling it)
+setenforce 0
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+yum-config-manager --enable ol7_optional_latest
+yum-config-manager --enable ol7_addons
+yum install docker-engine docker-ce docker-ce-cli containerd.io -y
+#yum install -y docker-engine btrfs-progs btrfs-progs-devel
+
+systemctl daemon-reload
+systemctl enable docker 
+systemctl start docker
+
+`cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kubelet kubeadm kubectl
+EOF`
+
+firewall-cmd --permanent --add-port=6443/tcp
+firewall-cmd --permanent --add-port=2379-2380/tcp
+firewall-cmd --permanent --add-port=10250/tcp
+firewall-cmd --permanent --add-port=10251/tcp
+firewall-cmd --permanent --add-port=10252/tcp
+firewall-cmd --permanent --add-port=10255/tcp
+firewall-cmd –reload
+modprobe br_netfilter
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+
+iptables -P FORWARD ACCEPT
+firewall-cmd --add-masquerade --permanent
+firewall-cmd --add-port=10250/tcp --permanent
+firewall-cmd --add-port=8472/udp --permanent
+
+#On Master Node only: #
+
+`cat <<EOF >>  /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF`
+
+sysctl -p
+sysctl --system
+
+systemctl daemon-reload
+
+
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes  
+systemctl enable --now kubelet
+
+kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=v1.25.0
+
+[root@master-node ~]# kubeadm config images pull
+[config/images] Pulled registry.k8s.io/kube-apiserver:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-controller-manager:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-scheduler:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-proxy:v1.25.0
+[config/images] Pulled registry.k8s.io/pause:3.8
+[config/images] Pulled registry.k8s.io/etcd:3.5.4-0
+[config/images] Pulled registry.k8s.io/coredns/coredns:v1.9.3
+[root@master-node ~]#
+
+
+
+
+rm /etc/containerd/config.toml
+systemctl restart containerd
+kubeadm init
+[root@localhost ~]# rm /etc/containerd/config.toml
+rm: remove regular file ‘/etc/containerd/config.toml’? y
+[root@localhost ~]# systemctl restart containerd
+
+Nodes-setup.sh
+
+#!/bin/sh
+
+#nmcli con add type ethernet con-name ens33 ifname ens33 ip4 192.168.75.140/24 gw4 192.168.75.2 ipv4.dns "192.168.75.2 8.8.8.8 8.8.4.4"
+
+hostnamectl set-hostname node1
+
+swapoff -a
+
+`cat << EOF >> /etc/hosts
+#192.168.75.140 master-node
+#192.168.75.141 node1
+EOF`
+
+
+# Set SELinux in permissive mode (effectively disabling it)
+setenforce 0
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+yum-config-manager --enable ol7_optional_latest
+yum-config-manager --enable ol7_addons
+yum install docker-engine docker-ce docker-ce-cli containerd.io -y
+#yum install -y docker-engine btrfs-progs btrfs-progs-devel
+
+systemctl daemon-reload
+systemctl enable docker 
+systemctl start docker
+
+`cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kubelet kubeadm kubectl
+EOF`
+
+iptables -P FORWARD ACCEPT
+firewall-cmd --add-masquerade --permanent
+firewall-cmd --add-port=10250/tcp --permanent
+firewall-cmd --add-port=8472/udp --permanent
+firewall-cmd –reload
+modprobe br_netfilter
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+
+
+#On Master Node only: #
+
+`cat <<EOF >>  /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF`
+
+sysctl -p
+sysctl --system
+
+systemctl daemon-reload
+
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes  
+systemctl enable --now kubelet
+
+
+
+[root@master-node ~]# kubeadm config images pull
+[config/images] Pulled registry.k8s.io/kube-apiserver:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-controller-manager:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-scheduler:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-proxy:v1.25.0
+[config/images] Pulled registry.k8s.io/pause:3.8
+[config/images] Pulled registry.k8s.io/etcd:3.5.4-0
+[config/images] Pulled registry.k8s.io/coredns/coredns:v1.9.3
+[root@master-node ~]#
+
+
+
+
+https://stackoverflow.com/questions/35757620/how-to-gracefully-remove-a-node-from-kubernetes
+
+
+146
+
+List the nodes and get the <node-name> you want to drain or (remove from cluster)
+
+kubectl get nodes
+1) First drain the node
+
+kubectl drain <node-name>
+You might have to ignore daemonsets and local-data in the machine
+
+kubectl drain <node-name> --ignore-daemonsets --delete-local-data
+2) Edit instance group for nodes (Only if you are using kops)
+
+kops edit ig nodes
+Set the MIN and MAX size to whatever it is -1 Just save the file (nothing extra to be done)
+
+You still might see some pods in the drained node that are related to daemonsets like networking plugin, fluentd for logs, kubedns/coredns etc
+
+3) Finally delete the node
+
+kubectl delete node <node-name>
+4) Commit the state for KOPS in s3: (Only if you are using kops)
+
+kops update cluster --yes
+OR (if you are using kubeadm)
+
+If you are using kubeadm and would like to reset the machine to a state which was there before running kubeadm join then run
+
+kubeadm reset
+
+
+https://acloudguru.com/hands-on-labs/setting-up-kubernetes-networking-with-weave-net
+https://www.weave.works/docs/net/latest/kubernetes/kube-addon/#npc
+https://aws.amazon.com/premiumsupport/knowledge-center/eks-node-status-ready/
+https://www.containiq.com/post/debugging-kubernetes-nodes-in-not-ready-state
+https://docs.mirantis.com/mcp/q4-18/mcp-operations-guide/kubernetes-operations/k8s-node-ops/k8s-node-remove.html
+
+https://stackoverflow.com/questions/35757620/how-to-gracefully-remove-a-node-from-kubernetes
+
+kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')&env.IPALLOC_RANGE=10.244.0.0/16"
+kubectl get pods -n kube-system -o wide
+https://aws.amazon.com/premiumsupport/knowledge-center/eks-node-status-ready/
+kubectl describe node
+ kubectl get nodes
+
+kubectl get pods --all-namespaces
+
+
+kubectl -n kube-system get cm kubeadm-config -o yaml
+
+kubectl get pods -n kube-system -o wide
+
+
+https://www.hostafrica.co.za/blog/new-technologies/install-kubernetes-delpoy-cluster-centos-7/
+
