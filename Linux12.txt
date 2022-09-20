@@ -1,0 +1,380 @@
+nmcli con add type ethernet con-name ens32 ifname ens32 ip4 192.168.75.141/24 gw4 192.168.75.2 ipv4.dns "192.168.75.2 8.8.8.8 8.8.4.4"
+
+
+ nmcli con add type ethernet con-name ens32 ifname ens32 ip4 192.168.75.141/24 gw4 192.168.75.2 ipv4.dns "192.168.75.2 8.8.8.8 8.8.4.4"
+yum install --downloadonly --downloaddir=<directory> <package>
+
+yum install --downloadonly --downloaddir=/root/kubedir kubelet kubeadm kubectl --disableexcludes=kubernetes
+
+https://oracle-base.com/articles/linux/docker-install-docker-on-oracle-linux-ol7
+
+
+to install docker
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+yum install docker-ce docker-ce-cli containerd.io
+
+yum clean all
+ wget http://yum.oracle.com/public-yum-ol7.repo
+  yum install container-selinux
+
+https://oracle-base.com/articles/linux/docker-install-docker-on-oracle-linux-ol7
+https://www.devopszones.com/2021/04/how-to-install-docker-on-oracle-linux-7.html
+https://blogs.oracle.com/virtualization/post/install-docker-on-oracle-linux-7
+
+
+
+
+docker installation in oracle7
+yum-config-manager --enable ol7_optional_latest
+yum-config-manager --enable ol7_addons
+
+
+#!/bin/sh
+
+dockerimagename=$(docker images|awk -F' ' '{print $1}')
+
+mkdir -p /root/dockerimages1
+cd /root/dockerimages1
+
+for i in $dockerimagename
+do
+   echo $i|awk -F'/' '{print $(NF)}'
+    echo $(docker save $i > $(echo $i|awk -F'/' '{print $(NF)}').tar)
+
+done
+
+Master
+#!/bin/sh
+
+#nmcli con add type ethernet con-name ens33 ifname ens33 ip4 192.168.75.140/24 gw4 192.168.75.2 ipv4.dns "192.168.75.2 8.8.8.8 8.8.4.4"
+
+hostnamectl set-hostname master-node
+
+swapoff -a
+
+`cat << EOF >> /etc/hosts
+192.168.75.140 master-node
+192.168.75.141 node1
+EOF`
+
+
+# Set SELinux in permissive mode (effectively disabling it)
+setenforce 0
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+yum-config-manager --enable ol7_optional_latest
+yum-config-manager --enable ol7_addons
+yum install docker-engine docker-ce docker-ce-cli containerd.io -y
+#yum install -y docker-engine btrfs-progs btrfs-progs-devel
+
+systemctl daemon-reload
+systemctl enable docker 
+systemctl start docker
+
+`cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl="https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch"
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kubelet kubeadm kubectl
+EOF`
+
+firewall-cmd --permanent --add-port=6443/tcp
+firewall-cmd --permanent --add-port=2379-2380/tcp
+firewall-cmd --permanent --add-port=10250/tcp
+firewall-cmd --permanent --add-port=10251/tcp
+firewall-cmd --permanent --add-port=10252/tcp
+firewall-cmd --permanent --add-port=10255/tcp
+firewall-cmd –reload
+modprobe br_netfilter
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+
+iptables -P FORWARD ACCEPT
+firewall-cmd --add-masquerade --permanent
+firewall-cmd --add-port=10250/tcp --permanent
+firewall-cmd --add-port=8472/udp --permanent
+
+#On Master Node only: #
+
+`cat <<EOF >>  /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF`
+
+sysctl -p
+sysctl --system
+
+systemctl daemon-reload
+
+
+yum install kubelet kubeadm kubectl --disableexcludes=kubernetes  
+systemctl enable --now kubelet
+
+kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=v1.25.0
+
+[root@master-node ~]# kubeadm config images pull
+[config/images] Pulled registry.k8s.io/kube-apiserver:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-controller-manager:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-scheduler:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-proxy:v1.25.0
+[config/images] Pulled registry.k8s.io/pause:3.8
+[config/images] Pulled registry.k8s.io/etcd:3.5.4-0
+[config/images] Pulled registry.k8s.io/coredns/coredns:v1.9.3
+[root@master-node ~]#
+
+
+
+
+rm /etc/containerd/config.toml
+systemctl restart containerd
+kubeadm init
+[root@localhost ~]# rm /etc/containerd/config.toml
+rm: remove regular file ‘/etc/containerd/config.toml’? y
+[root@localhost ~]# systemctl restart containerd
+
+Nodes-setup.sh
+
+#!/bin/sh
+
+#nmcli con add type ethernet con-name ens33 ifname ens33 ip4 192.168.75.140/24 gw4 192.168.75.2 ipv4.dns "192.168.75.2 8.8.8.8 8.8.4.4"
+
+hostnamectl set-hostname node1
+
+swapoff -a
+
+`cat << EOF >> /etc/hosts
+#192.168.75.140 master-node
+#192.168.75.141 node1
+EOF`
+
+
+# Set SELinux in permissive mode (effectively disabling it)
+setenforce 0
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+yum-config-manager --enable ol7_optional_latest
+yum-config-manager --enable ol7_addons
+yum install docker-engine docker-ce docker-ce-cli containerd.io -y
+#yum install -y docker-engine btrfs-progs btrfs-progs-devel
+
+systemctl daemon-reload
+systemctl enable docker 
+systemctl start docker
+
+`cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kubelet kubeadm kubectl
+EOF`
+
+iptables -P FORWARD ACCEPT
+firewall-cmd --add-masquerade --permanent
+firewall-cmd --add-port=10250/tcp --permanent
+firewall-cmd --add-port=8472/udp --permanent
+firewall-cmd –reload
+modprobe br_netfilter
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+
+
+#On Master Node only: #
+
+`cat <<EOF >>  /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF`
+
+sysctl -p
+sysctl --system
+
+systemctl daemon-reload
+
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes  
+systemctl enable --now kubelet
+
+
+
+[root@master-node ~]# kubeadm config images pull
+[config/images] Pulled registry.k8s.io/kube-apiserver:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-controller-manager:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-scheduler:v1.25.0
+[config/images] Pulled registry.k8s.io/kube-proxy:v1.25.0
+[config/images] Pulled registry.k8s.io/pause:3.8
+[config/images] Pulled registry.k8s.io/etcd:3.5.4-0
+[config/images] Pulled registry.k8s.io/coredns/coredns:v1.9.3
+[root@master-node ~]#
+
+
+
+
+https://stackoverflow.com/questions/35757620/how-to-gracefully-remove-a-node-from-kubernetes
+
+
+146
+
+List the nodes and get the <node-name> you want to drain or (remove from cluster)
+
+kubectl get nodes
+1) First drain the node
+
+kubectl drain <node-name>
+You might have to ignore daemonsets and local-data in the machine
+
+kubectl drain <node-name> --ignore-daemonsets --delete-local-data
+2) Edit instance group for nodes (Only if you are using kops)
+
+kops edit ig nodes
+Set the MIN and MAX size to whatever it is -1 Just save the file (nothing extra to be done)
+
+You still might see some pods in the drained node that are related to daemonsets like networking plugin, fluentd for logs, kubedns/coredns etc
+
+3) Finally delete the node
+
+kubectl delete node <node-name>
+4) Commit the state for KOPS in s3: (Only if you are using kops)
+
+kops update cluster --yes
+OR (if you are using kubeadm)
+
+If you are using kubeadm and would like to reset the machine to a state which was there before running kubeadm join then run
+
+kubeadm reset
+
+
+https://acloudguru.com/hands-on-labs/setting-up-kubernetes-networking-with-weave-net
+https://www.weave.works/docs/net/latest/kubernetes/kube-addon/#npc
+https://aws.amazon.com/premiumsupport/knowledge-center/eks-node-status-ready/
+https://www.containiq.com/post/debugging-kubernetes-nodes-in-not-ready-state
+https://docs.mirantis.com/mcp/q4-18/mcp-operations-guide/kubernetes-operations/k8s-node-ops/k8s-node-remove.html
+
+https://stackoverflow.com/questions/35757620/how-to-gracefully-remove-a-node-from-kubernetes
+
+kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')&env.IPALLOC_RANGE=10.244.0.0/16"
+kubectl get pods -n kube-system -o wide
+https://aws.amazon.com/premiumsupport/knowledge-center/eks-node-status-ready/
+kubectl describe node
+ kubectl get nodes
+
+kubectl get pods --all-namespaces
+
+
+
+
+
+[root@localhost ~]# kubeadm init
+[init] Using Kubernetes version: v1.24.4
+[preflight] Running pre-flight checks
+        [WARNING Firewalld]: firewalld is active, please ensure ports [6443 10250] are open or your cluster may not function correctly
+[preflight] Pulling images required for setting up a Kubernetes cluster
+[preflight] This might take a minute or two, depending on the speed of your internet connection
+[preflight] You can also perform this action in beforehand using 'kubeadm config images pull'
+[certs] Using certificateDir folder "/etc/kubernetes/pki"
+[certs] Generating "ca" certificate and key
+[certs] Generating "apiserver" certificate and key
+[certs] apiserver serving cert is signed for DNS names [kubernetes kubernetes.default kubernetes.default.svc kubernetes.default.svc.cluster.local localhost.localdomain] and IPs [10.96.0.1 192.168.75.140]
+[certs] Generating "apiserver-kubelet-client" certificate and key
+[certs] Generating "front-proxy-ca" certificate and key
+[certs] Generating "front-proxy-client" certificate and key
+[certs] Generating "etcd/ca" certificate and key
+[certs] Generating "etcd/server" certificate and key
+[certs] etcd/server serving cert is signed for DNS names [localhost localhost.localdomain] and IPs [192.168.75.140 127.0.0.1 ::1]
+[certs] Generating "etcd/peer" certificate and key
+[certs] etcd/peer serving cert is signed for DNS names [localhost localhost.localdomain] and IPs [192.168.75.140 127.0.0.1 ::1]
+[certs] Generating "etcd/healthcheck-client" certificate and key
+[certs] Generating "apiserver-etcd-client" certificate and key
+[certs] Generating "sa" key and public key
+[kubeconfig] Using kubeconfig folder "/etc/kubernetes"
+[kubeconfig] Writing "admin.conf" kubeconfig file
+[kubeconfig] Writing "kubelet.conf" kubeconfig file
+[kubeconfig] Writing "controller-manager.conf" kubeconfig file
+[kubeconfig] Writing "scheduler.conf" kubeconfig file
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet-start] Starting the kubelet
+[control-plane] Using manifest folder "/etc/kubernetes/manifests"
+[control-plane] Creating static Pod manifest for "kube-apiserver"
+[control-plane] Creating static Pod manifest for "kube-controller-manager"
+[control-plane] Creating static Pod manifest for "kube-scheduler"
+[etcd] Creating static Pod manifest for local etcd in "/etc/kubernetes/manifests"
+[wait-control-plane] Waiting for the kubelet to boot up the control plane as static Pods from directory "/etc/kubernetes/manifests". This can take up to 4m0s
+[apiclient] All control plane components are healthy after 11.507531 seconds
+[upload-config] Storing the configuration used in ConfigMap "kubeadm-config" in the "kube-system" Namespace
+[kubelet] Creating a ConfigMap "kubelet-config" in namespace kube-system with the configuration for the kubelets in the cluster
+[upload-certs] Skipping phase. Please see --upload-certs
+[mark-control-plane] Marking the node localhost.localdomain as control-plane by adding the labels: [node-role.kubernetes.io/control-plane node.kubernetes.io/exclude-from-external-load-balancers]
+[mark-control-plane] Marking the node localhost.localdomain as control-plane by adding the taints [node-role.kubernetes.io/master:NoSchedule node-role.kubernetes.io/control-plane:NoSchedule]
+[bootstrap-token] Using token: 3w0jrr.e0tmx1oi880uqwgj
+[bootstrap-token] Configuring bootstrap tokens, cluster-info ConfigMap, RBAC Roles
+[bootstrap-token] Configured RBAC rules to allow Node Bootstrap tokens to get nodes
+[bootstrap-token] Configured RBAC rules to allow Node Bootstrap tokens to post CSRs in order for nodes to get long term certificate credentials
+[bootstrap-token] Configured RBAC rules to allow the csrapprover controller automatically approve CSRs from a Node Bootstrap Token
+[bootstrap-token] Configured RBAC rules to allow certificate rotation for all node client certificates in the cluster
+[bootstrap-token] Creating the "cluster-info" ConfigMap in the "kube-public" namespace
+[kubelet-finalize] Updating "/etc/kubernetes/kubelet.conf" to point to a rotatable kubelet client certificate and key
+[addons] Applied essential addon: CoreDNS
+[addons] Applied essential addon: kube-proxy
+
+Your Kubernetes control-plane has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Alternatively, if you are the root user, you can run:
+
+  export KUBECONFIG=/etc/kubernetes/admin.conf
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join 192.168.75.140:6443 --token 3w0jrr.e0tmx1oi880uqwgj \
+        --discovery-token-ca-cert-hash sha256:0d756d55cd807f30ed6e6b599b57cf642b9b5cbd79c7457e11399736a28b5ae7
+[root@localhost ~]#
+
+yum-config-manager --enable ol7_latest ol7_u9_base ol7_optional_latest docker-ce-stable
+
+yum-config-manager --enable docker-ce-stable
+
+Your Kubernetes control-plane has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Alternatively, if you are the root user, you can run:
+
+  export KUBECONFIG=/etc/kubernetes/admin.conf
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join 192.168.75.140:6443 --token 0cj8m9.7zqpknnuxemyry7y \
+        --discovery-token-ca-cert-hash sha256:8d26ef0b7ad1929739fd2e5fff21c61bc086fc057bfa827ebe49a3acdbfd500c
+[root@master-node ~]#
+
+
+
+kubeadm join 192.168.75.140:6443 --token 0cj8m9.7zqpknnuxemyry7y --discovery-token-ca-cert-hash sha256:8d26ef0b7ad1929739fd2e5fff21c61bc086fc057bfa827ebe49a3acdbfd500c
+
+kubectl -n kube-system get cm kubeadm-config -o yaml
